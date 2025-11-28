@@ -1,11 +1,12 @@
 import os
 import random
 from telegram import Update
-from telegram.ext import Updater, CommandHandler, ContextTypes # تغییر: استفاده از Updater
+# استفاده از سینتکس مدرن (Application)
+from telegram.ext import Application, CommandHandler, ContextTypes
 import logging
 import instaloader
 
-# تنظیمات لاگ (گزارش‌ها)
+# تنظیمات لاگ
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
@@ -48,7 +49,6 @@ class RealVideoTrendBot:
                 if len(posts) >= count:
                     break
                 
-                # فیلتر کردن بر اساس ویدیو بودن و لایک بالا
                 if (post.is_video and 
                     post.likes and post.likes > 1000 and
                     (post.video_url or post.url)):
@@ -210,7 +210,7 @@ async def send_videos_message(update, videos, title):
     await update.message.reply_text(message, parse_mode='Markdown', disable_web_page_preview=True)
 
 def main():
-    """تابع اصلی اجرای ربات (با استفاده از Updater/Dispatcher)"""
+    """تابع اصلی اجرای ربات"""
     try:
         print("🚀 Starting Real Video Trend Bot...")
         
@@ -218,42 +218,64 @@ def main():
             logger.error("❌ TELEGRAM_TOKEN environment variable not found! Bot cannot start.")
             return
 
-        # 1. ساخت نمونه Updater
-        updater = Updater(TELEGRAM_TOKEN)
-        # 2. دسترسی به Dispatcher
-        dispatcher = updater.dispatcher
+        # ساخت نمونه Application
+        application = Application.builder().token(TELEGRAM_TOKEN).build()
         
-        # ثبت تمام دستورات در Dispatcher
-        dispatcher.add_handler(CommandHandler("start", start_command))
-        dispatcher.add_handler(CommandHandler("videos_global", videos_global_command))
-        dispatcher.add_handler(CommandHandler("videos_kpop", videos_kpop_command))
-        dispatcher.add_handler(CommandHandler("videos_memes", videos_memes_command))
-        dispatcher.add_handler(CommandHandler("videos_dance", videos_dance_command))
-        dispatcher.add_handler(CommandHandler("videos_music", videos_music_command))
-        dispatcher.add_handler(CommandHandler("search", search_command))
+        # ثبت تمام دستورات
+        application.add_handler(CommandHandler("start", start_command))
+        application.add_handler(CommandHandler("videos_global", videos_global_command))
+        application.add_handler(CommandHandler("videos_kpop", videos_kpop_command))
+        application.add_handler(CommandHandler("videos_memes", videos_memes_command))
+        application.add_handler(CommandHandler("videos_dance", videos_dance_command))
+        application.add_handler(CommandHandler("videos_music", videos_music_command))
+        application.add_handler(CommandHandler("search", search_command))
         
         if WEBHOOK_URL:
-            # حالت Webhook: برای اجرا در سرویس‌های ابری مثل Railway
+            # حالت Webhook
             full_webhook_url = f"{WEBHOOK_URL}/{TELEGRAM_TOKEN}"
             print(f"✅ Running in WEBHOOK mode on port {PORT}. URL: {full_webhook_url}")
             
-            # اجرای Webhook برای دریافت پیام‌ها
-            updater.start_webhook(
+            # اجرای Webhook
+            application.run_webhook(
                 listen="0.0.0.0",
                 port=PORT,
-                url_path=TELEGRAM_TOKEN,
-                webhook_url=full_webhook_url
+                url_path=TELEGRAM_TOKEN, 
+                webhook_url=full_webhook_url 
             )
-            # این خط تا زمانی که Railway ربات را فعال نگه دارد، اجرا می‌شود
-            updater.idle()
         else:
-            # حالت Polling: اگر WEBHOOK_URL تنظیم نشود
+            # حالت Polling
             print("⚠️ WEBHOOK_URL environment variable not set. Running in Polling mode (Local Test).")
-            updater.start_polling()
-            updater.idle()
+            application.run_polling(poll_interval=1.0)
             
     except Exception as e:
         logger.error(f"❌ Error starting bot: {e}")
 
 if __name__ == "__main__":
     main()
+```eof
+
+---
+
+### ۲. فایل: `requirements.txt` (نیازهای کتابخانه)
+
+```markdown:لیست کتابخانه ها:requirements.txt
+# استفاده از آخرین نسخه سازگار python-telegram-bot
+python-telegram-bot
+instaloader==4.10
+```eof
+
+---
+
+### ۳. فایل: `.python-version` (نسخه پایتون)
+
+```markdown:تعیین نسخه پایتون:.python-version
+3.10
+```eof
+
+---
+
+### ۴. فایل: `Procfile` (دستور اجرا)
+
+```markdown:دستور اجرا:Procfile
+web: python bot_main.py
+```eof
