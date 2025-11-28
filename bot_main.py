@@ -1,11 +1,11 @@
 import os
 import random
 from telegram import Update
-from telegram.ext import Application, CommandHandler, ContextTypes
+from telegram.ext import Updater, CommandHandler, ContextTypes # تغییر: استفاده از Updater
 import logging
 import instaloader
 
-# تنظیمات لاگ (گزارش‌ها) برای دیدن وضعیت ربات در سرور
+# تنظیمات لاگ (گزارش‌ها)
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
@@ -13,7 +13,6 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # --- متغیرهای محیطی ضروری ---
-# این مقادیر از طریق تنظیمات Railway خوانده می‌شوند
 TELEGRAM_TOKEN = os.environ.get('TELEGRAM_TOKEN')
 PORT = int(os.environ.get('PORT', 5000)) 
 WEBHOOK_URL = os.environ.get('WEBHOOK_URL') 
@@ -23,7 +22,6 @@ WEBHOOK_URL = os.environ.get('WEBHOOK_URL')
 class RealVideoTrendBot:
     """کلاس اصلی برای مدیریت منطق جستجوی ویدیوهای ترند"""
     def __init__(self):
-        # راه‌اندازی Instaloader 
         try:
             self.L = instaloader.Instaloader(
                 sleep=True, 
@@ -67,14 +65,12 @@ class RealVideoTrendBot:
                         'comments': post.comments or 0,
                         'views': post.video_view_count or 0,
                         'owner': post.owner_username or "unknown",
-                        # محاسبه شاخص ترند (Engagement)
                         'engagement': (post.likes or 0) + ((post.comments or 0) * 2),
                         'hashtag': hashtag
                     })
                     
                     logger.info(f"✅ Found video from @{post.owner_username} with {post.likes} likes")
             
-            # مرتب‌سازی بر اساس Engagement
             posts.sort(key=lambda x: x['engagement'], reverse=True)
             return posts
             
@@ -94,7 +90,6 @@ class RealVideoTrendBot:
             if len(all_videos) >= count:
                 break
         
-        # حذف موارد تکراری و مرتب‌سازی نهایی
         unique_videos = []
         seen_urls = set()
         for video in all_videos:
@@ -152,7 +147,6 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     await update.message.reply_text(welcome_text, parse_mode='Markdown')
 
-# توابع برای هر دسته‌بندی
 async def videos_global_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("🔍 درحال جستجوی ویدیوهای ترند جهانی...")
     videos = video_bot.get_trending_from_hashtags(TREND_CATEGORIES["global"], 6)
@@ -216,7 +210,7 @@ async def send_videos_message(update, videos, title):
     await update.message.reply_text(message, parse_mode='Markdown', disable_web_page_preview=True)
 
 def main():
-    """تابع اصلی اجرای ربات"""
+    """تابع اصلی اجرای ربات (با استفاده از Updater/Dispatcher)"""
     try:
         print("🚀 Starting Real Video Trend Bot...")
         
@@ -224,17 +218,19 @@ def main():
             logger.error("❌ TELEGRAM_TOKEN environment variable not found! Bot cannot start.")
             return
 
-        # ساخت نمونه Application برای ربات
-        application = Application.builder().token(TELEGRAM_TOKEN).build()
+        # 1. ساخت نمونه Updater
+        updater = Updater(TELEGRAM_TOKEN)
+        # 2. دسترسی به Dispatcher
+        dispatcher = updater.dispatcher
         
-        # ثبت تمام دستورات
-        application.add_handler(CommandHandler("start", start_command))
-        application.add_handler(CommandHandler("videos_global", videos_global_command))
-        application.add_handler(CommandHandler("videos_kpop", videos_kpop_command))
-        application.add_handler(CommandHandler("videos_memes", videos_memes_command))
-        application.add_handler(CommandHandler("videos_dance", videos_dance_command))
-        application.add_handler(CommandHandler("videos_music", videos_music_command))
-        application.add_handler(CommandHandler("search", search_command))
+        # ثبت تمام دستورات در Dispatcher
+        dispatcher.add_handler(CommandHandler("start", start_command))
+        dispatcher.add_handler(CommandHandler("videos_global", videos_global_command))
+        dispatcher.add_handler(CommandHandler("videos_kpop", videos_kpop_command))
+        dispatcher.add_handler(CommandHandler("videos_memes", videos_memes_command))
+        dispatcher.add_handler(CommandHandler("videos_dance", videos_dance_command))
+        dispatcher.add_handler(CommandHandler("videos_music", videos_music_command))
+        dispatcher.add_handler(CommandHandler("search", search_command))
         
         if WEBHOOK_URL:
             # حالت Webhook: برای اجرا در سرویس‌های ابری مثل Railway
@@ -242,16 +238,19 @@ def main():
             print(f"✅ Running in WEBHOOK mode on port {PORT}. URL: {full_webhook_url}")
             
             # اجرای Webhook برای دریافت پیام‌ها
-            application.run_webhook(
+            updater.start_webhook(
                 listen="0.0.0.0",
                 port=PORT,
-                url_path=TELEGRAM_TOKEN, 
-                webhook_url=full_webhook_url 
+                url_path=TELEGRAM_TOKEN,
+                webhook_url=full_webhook_url
             )
+            # این خط تا زمانی که Railway ربات را فعال نگه دارد، اجرا می‌شود
+            updater.idle()
         else:
             # حالت Polling: اگر WEBHOOK_URL تنظیم نشود
             print("⚠️ WEBHOOK_URL environment variable not set. Running in Polling mode (Local Test).")
-            application.run_polling(poll_interval=1.0)
+            updater.start_polling()
+            updater.idle()
             
     except Exception as e:
         logger.error(f"❌ Error starting bot: {e}")
